@@ -46,6 +46,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// AutoMigrate does not widen existing columns. Deployments created while
+	// handle_result was VARCHAR(128) must be widened so long (up-to-200-char)
+	// administrator notes are not rejected by the database. Idempotent on MySQL.
+	if err := db.Exec("ALTER TABLE reports MODIFY COLUMN handle_result VARCHAR(512) NOT NULL DEFAULT ''").Error; err != nil {
+		logger.Warn("widen reports.handle_result skipped", slog.String("error", err.Error()))
+	}
+
 	if cfg.SeedingEnabled {
 		if err := seed(context.Background(), db, logger); err != nil {
 			logger.Error("seeding failed", slog.String("error", err.Error()))

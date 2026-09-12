@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS reports (
   pending_product_id BIGINT UNSIGNED NULL,
   handler_id BIGINT UNSIGNED NULL,
   handled_at DATETIME(3) NULL,
-  handle_result VARCHAR(128) DEFAULT '',
+  handle_result VARCHAR(512) DEFAULT '',
   handle_note TEXT,
   created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
   UNIQUE INDEX uniq_report_pending_product (pending_product_id),

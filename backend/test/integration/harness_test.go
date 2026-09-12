@@ -63,6 +63,7 @@ func dsn(addr, user, pass string) string {
 type harness struct {
 	t       *testing.T
 	router  http.Handler
+	db      *gorm.DB
 	tokenA  string // student 13700000001
 	tokenB  string // student 13700000002
 	adminTo string // admin 13800000001
@@ -75,6 +76,14 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatalf("gorm open: %v", err)
 	}
+	return newHarnessWithDB(t, db)
+}
+
+// newHarnessWithDB wires the real router against any GORM database. It is used
+// with the in-memory MySQL engine for most flows and with an in-memory SQLite
+// database (real ROLLBACK semantics) for the transaction-rollback test.
+func newHarnessWithDB(t *testing.T, db *gorm.DB) *harness {
+	t.Helper()
 	if err := db.AutoMigrate(
 		&model.User{}, &model.Product{}, &model.Conversation{}, &model.Message{},
 		&model.TradeOrder{}, &model.Review{}, &model.BookExchange{}, &model.Report{},
@@ -107,7 +116,7 @@ func newHarness(t *testing.T) *harness {
 		CORSOrigins: []string{"*"}, SeedingEnabled: false,
 	}
 	r := router.New(cfg, db, slog.Default())
-	h := &harness{t: t, router: r}
+	h := &harness{t: t, router: r, db: db}
 	h.tokenA = h.login("13700000001", "123456")
 	h.tokenB = h.login("13700000002", "123456")
 	h.adminTo = h.login("13800000001", "admin123")

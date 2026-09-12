@@ -16,7 +16,10 @@ type Report struct {
 	PendingProductID *uint      `gorm:"uniqueIndex:uniq_report_pending_product" json:"-"`
 	HandlerID        *uint      `gorm:"index" json:"handler_id"`
 	HandledAt        *time.Time `json:"handled_at"`
-	HandleResult     string     `gorm:"size:128" json:"handle_result"`
-	HandleNote       string     `gorm:"type:text" json:"handle_note"`
-	CreatedAt        time.Time  `json:"created_at"`
+	// HandleResult holds the action label plus the administrator note
+	// (e.g. "下架商品：<note>"). The note may be up to 200 characters, so the
+	// column must be wider than a short enum-sized varchar.
+	HandleResult string    `gorm:"size:512" json:"handle_result"`
+	HandleNote   string    `gorm:"type:text" json:"handle_note"`
+	CreatedAt    time.Time `json:"created_at"`
 }

@@ -114,6 +114,12 @@ func (s *ReportService) Handle(ctx context.Context, adminID uint, reportID uint,
 	if !constants.IsReportAction(req.Action) {
 		return nil, util.NewAppError(400, constants.CodeValidation, "处理方式不合法", nil)
 	}
+	// The note is appended to HandleResult ("下架商品：<note>"); guard the
+	// length at the service layer too so an oversized note can never reach
+	// the database and fail mid-transaction.
+	if len([]rune(strings.TrimSpace(req.Note))) > 200 {
+		return nil, util.NewAppError(400, constants.CodeValidation, "处理备注最多200字", nil)
+	}
 	rp, err := s.reports.FindByID(ctx, reportID)
 	if err != nil {
 		return nil, util.WrapAppError(fmt.Errorf("report[id=%d] handle find: %w", reportID, err), 404, constants.CodeNotFound, constants.MsgReportNotFound)
