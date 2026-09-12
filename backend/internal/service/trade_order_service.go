@@ -35,6 +35,10 @@ func (s *TradeOrderService) Create(ctx context.Context, buyer *model.User, req *
 	if product.SellerID == buyer.ID {
 		return nil, util.NewAppError(400, constants.CodeBadRequest, "不能购买自己的商品", nil)
 	}
+	if product.Status == constants.ProductStatusRemoved {
+		s.logger.Info(fmt.Sprintf(constants.LogReportProductBlocked, req.ProductID, buyer.ID, "order"))
+		return nil, util.NewAppError(409, constants.CodeConflict, constants.MsgProductRemoved, nil)
+	}
 	if product.Status != constants.ProductStatusOnSale {
 		return nil, util.NewAppError(409, constants.CodeConflict, constants.MsgProductNotOnSale, nil)
 	}

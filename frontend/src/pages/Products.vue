@@ -33,7 +33,15 @@
         <el-descriptions-item label="状态">{{ productStatusLabel(current.status) }}</el-descriptions-item>
         <el-descriptions-item label="描述" :span="2">{{ current.description }}</el-descriptions-item>
       </el-descriptions>
+      <template #footer>
+        <el-tag v-if="current && reportedIds.has(current.id)" type="warning" effect="plain">已举报，等待处理</el-tag>
+        <el-button
+          v-if="current && authStore.token && authStore.user?.id !== current.seller_id && current.status !== 'removed'"
+          type="danger" plain :disabled="reportedIds.has(current.id)" @click="openReport"
+        >举报</el-button>
+      </template>
     </el-dialog>
+    <ReportDialog ref="reportDialogRef" :product="current" @submitted="onReported" />
   </div>
 </template>
 
@@ -41,10 +49,12 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import ProductCard from '../components/common/ProductCard.vue'
+import ReportDialog from '../components/common/ReportDialog.vue'
 import { PRODUCT_CATEGORIES, categoryLabel, productStatusLabel } from '../constants/product'
 import { useProducts } from '../hooks/useProducts'
 import { createTradeOrder } from '../api/tradeOrder'
 import { createConversation } from '../api/conversation'
+import { listMyReports } from '../api/report'
 import type { Product } from '../types'
 import { useAuthStore } from '../stores/authStore'
 import { useRouter } from 'vue-router'
@@ -55,10 +65,33 @@ const detailVisible = ref(false)
 const current = ref<Product | null>(null)
 const authStore = useAuthStore()
 const router = useRouter()
+const reportDialogRef = ref<InstanceType<typeof ReportDialog> | null>(null)
+// 我提交的、仍处于待处理状态的举报（同一商品仅保留一条待处理举报）
+const reportedIds = ref<Set<number>>(new Set())
 
 function showDetail(p: Product) {
   current.value = p
   detailVisible.value = true
+}
+
+function openReport() {
+  reportDialogRef.value?.open()
+}
+
+function onReported() {
+  if (current.value) {
+    reportedIds.value.add(current.value.id)
+  }
+}
+
+async function loadMyPendingReports() {
+  if (!authStore.token) return
+  try {
+    const res = await listMyReports()
+    reportedIds.value = new Set(res.data.filter((r) => r.status === 'pending').map((r) => r.product_id))
+  } catch {
+    // 未登录或加载失败时不影响商品浏览
+  }
 }
 
 async function buy(p: Product) {
@@ -82,7 +115,10 @@ async function chat(p: Product) {
   router.push('/messages')
 }
 
-onMounted(() => load())
+onMounted(() => {
+  load()
+  loadMyPendingReports()
+})
 </script>
 
 <style scoped>

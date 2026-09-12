@@ -14,7 +14,7 @@
     <div class="product-actions">
       <el-button size="small" @click="$emit('detail', product)">详情</el-button>
       <el-button v-if="!hideBuy" size="small" type="primary" :disabled="product.status !== 'on_sale'" @click="$emit('buy', product)">购买</el-button>
-      <el-button v-if="showChat" size="small" @click="$emit('chat', product)">私信</el-button>
+      <el-button v-if="showChat" size="small" :disabled="product.status === 'removed'" @click="$emit('chat', product)">私信</el-button>
     </div>
   </el-card>
 </template>

@@ -79,11 +79,11 @@ cy-354/
 │   └── internal/
 │       ├── config/          # 环境变量配置
 │       ├── constants/       # product.go, trade.go, user.go, error_codes.go, log_templates.go, messages.go
-│       ├── model/           # user, product, conversation, message, trade_order, review, book_exchange
+│       ├── model/           # user, product, conversation, message, trade_order, review, book_exchange, report
 │       ├── repository/      # GORM 仓库（按实体分文件）
 │       ├── service/         # 业务逻辑（按实体分文件）
 │       ├── handler/         # HTTP 处理器（按实体分文件）
-│       ├── router/          # router.go + 按实体路由文件
+│       ├── router/          # router.go + 按实体路由文件（含 reports.go）
 │       ├── middleware/      # auth, rbac, rate_limiter, error_handler, request_id
 │       ├── dto/             # 请求/响应结构体
 │       └── util/            # jwt, logger, formatters, app_error, credit_calculator, response
@@ -91,14 +91,14 @@ cy-354/
     ├── Dockerfile
     ├── nginx.conf
     └── src/
-        ├── api/             # user, product, conversation, tradeOrder, review, bookExchange
+        ├── api/             # user, product, conversation, tradeOrder, review, bookExchange, report
         ├── stores/          # authStore, userStore, productStore, tradeStore
-        ├── components/common/# ProductCard, ProductForm, MessageBubble, TradeStatusBadge, ExchangeCard
+        ├── components/common/# ProductCard, ProductForm, MessageBubble, TradeStatusBadge, ExchangeCard, ReportDialog
         ├── hooks/           # useAuth, useProducts, useConversations
-        ├── pages/           # Products, Publish, Messages, Orders, BookExchange, Graduation, Profile, Login, Register
+        ├── pages/           # Products, Publish, Messages, Orders, BookExchange, Graduation, Profile, AdminReports, Login, Register
         ├── router/          # index.ts + guards.ts
         ├── utils/           # request, dateFormat, priceFormatter
-        ├── constants/       # product, trade, user, errorCodes
+        ├── constants/       # product, trade, user, report, errorCodes
         └── types/           # 共享类型
 ```
 
@@ -141,6 +141,8 @@ cy-354/
   - `POST /api/v1/conversations`、`GET /api/v1/conversations/me`、`GET/POST /api/v1/conversations/:id/messages`
   - `POST /api/v1/trade-orders`、`GET /api/v1/trade-orders/me`、`POST /api/v1/trade-orders/:id/buyer-confirm|seller-confirm|cancel`
   - `POST /api/v1/reviews`、`GET /api/v1/reviews/me`
+  - `POST /api/v1/reports`、`GET /api/v1/reports/me`（商品举报）
+  - `GET /api/v1/admin/reports`、`POST /api/v1/admin/reports/:id/handle`（管理员处理举报）
   - `GET/POST /api/v1/book-exchanges`、`POST /api/v1/book-exchanges/:id/close`
   - `GET /api/v1/admin/stats`（管理员）
 
@@ -171,10 +173,21 @@ cy-354/
 | POST | `/api/v1/trade-orders/:id/cancel` | 取消订单 | 登录 |
 | POST | `/api/v1/reviews` | 交易后评价（含信誉积分） | 登录 |
 | GET | `/api/v1/reviews/me` | 我收到的评价 | 登录 |
+| POST | `/api/v1/reports` | 提交商品举报（原因+说明，同一商品仅一条待处理） | 登录 |
+| GET | `/api/v1/reports/me` | 我的举报记录与处理状态 | 登录 |
+| GET | `/api/v1/admin/reports` | 举报列表（`status=pending/removed/rejected`，缺省全部） | 管理员 |
+| POST | `/api/v1/admin/reports/:id/handle` | 处理举报：`remove` 下架商品 / `reject` 驳回（记录处理人/时间/结果） | 管理员 |
 | GET | `/api/v1/book-exchanges` | 书籍交换列表 | 无 |
 | POST | `/api/v1/book-exchanges` | 发布换书请求（自动匹配） | 登录 |
 | POST | `/api/v1/book-exchanges/:id/close` | 关闭换书请求 | 本人 |
 | GET | `/api/v1/admin/stats` | 平台统计占位接口 | 管理员 |
+
+## 商品举报流程
+
+1. 登录学生在商品详情点击「举报」，选择原因（垃圾广告/欺诈/违禁/虚假信息/骚扰/其他）并填写补充说明。
+2. 数据库通过 `pending_product_id` 唯一索引保证**同一商品仅保留一条待处理举报**（重复提交返回 409）；卖家不能举报自己的商品；举报处理完成后可再次举报。
+3. 管理员在「举报处理」页（仅 `admin` 角色，导航入口按角色显隐，路由守卫 + 后端 RBAC 双重拦截）查看待处理/已处理记录，可选择**下架商品**（举报成立，商品置为 `removed`）或**驳回举报**；系统记录处理人、处理时间、处理结果与备注。
+4. 被下架商品不再接受下单或发起/继续私信（后端在订单、会话、消息三处拦截）；举报者在个人中心「我的举报」查看处理状态。
 
 ## 枚举出现位置清单
 

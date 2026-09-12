@@ -84,3 +84,36 @@ export interface PageResult<T> {
   page: number
   page_size: number
 }
+
+export interface Report {
+  id: number
+  product_id: number
+  reporter_id: number
+  reason: string
+  detail: string
+  status: string
+  handler_id: number | null
+  handled_at: string | null
+  handle_result: string
+  handle_note: string
+  created_at: string
+}
+
+// 举报列表视图（后端 JOIN 商品/用户后返回）
+export interface ReportView {
+  id: number
+  product_id: number
+  product_title: string
+  product_status: string
+  reporter_id: number
+  reporter_name: string
+  reason: string
+  detail: string
+  status: string
+  handler_id: number | null
+  handler_name: string
+  handled_at: string | null
+  handle_result: string
+  handle_note: string
+  created_at: string
+}

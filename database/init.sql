@@ -94,6 +94,26 @@ CREATE TABLE IF NOT EXISTS book_exchanges (
   INDEX idx_book_exchanges_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS reports (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id BIGINT UNSIGNED NOT NULL,
+  reporter_id BIGINT UNSIGNED NOT NULL,
+  reason VARCHAR(24) NOT NULL,
+  detail TEXT,
+  status VARCHAR(16) NOT NULL DEFAULT 'pending',
+  pending_product_id BIGINT UNSIGNED NULL,
+  handler_id BIGINT UNSIGNED NULL,
+  handled_at DATETIME(3) NULL,
+  handle_result VARCHAR(128) DEFAULT '',
+  handle_note TEXT,
+  created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
+  UNIQUE INDEX uniq_report_pending_product (pending_product_id),
+  INDEX idx_reports_product (product_id),
+  INDEX idx_reports_reporter (reporter_id),
+  INDEX idx_reports_status (status),
+  INDEX idx_reports_handler (handler_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 种子账号（bcrypt）
 -- 13700000001/123456 小明同学；13700000002/123456 阿珍；13700000003/123456 二手达人；13800000001/admin123 平台管理员
 INSERT INTO users (phone, password_hash, nickname, avatar, role, campus, credit_score) VALUES

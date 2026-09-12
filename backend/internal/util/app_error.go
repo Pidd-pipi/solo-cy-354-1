@@ -8,12 +8,14 @@ import (
 
 // Sentinel errors returned by the repository layer.
 var (
-	ErrNotFound     = errors.New("not found")
-	ErrConflict     = errors.New("conflict")
-	ErrInvalidInput = errors.New("invalid input")
-	ErrForbidden    = errors.New("forbidden")
-	ErrUnauthorized = errors.New("unauthorized")
-	ErrRateLimited  = errors.New("rate limited")
+	ErrNotFound         = errors.New("not found")
+	ErrConflict         = errors.New("conflict")
+	ErrInvalidInput     = errors.New("invalid input")
+	ErrForbidden        = errors.New("forbidden")
+	ErrUnauthorized     = errors.New("unauthorized")
+	ErrRateLimited      = errors.New("rate limited")
+	ErrDuplicate        = errors.New("duplicate entry")
+	ErrConcurrentUpdate = errors.New("concurrent update")
 )
 
 // AppError carries HTTP status, business code and a wrapped cause.

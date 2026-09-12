@@ -14,17 +14,26 @@ import (
 
 // ConversationService manages price-negotiation chats between buyer and seller.
 type ConversationService struct {
-	convs *repository.ConversationRepository
-	logger *slog.Logger
+	convs    *repository.ConversationRepository
+	products *repository.ProductRepository
+	logger   *slog.Logger
 }
 
 // NewConversationService wires the conversation service dependencies.
-func NewConversationService(convs *repository.ConversationRepository, logger *slog.Logger) *ConversationService {
-	return &ConversationService{convs: convs, logger: logger}
+func NewConversationService(convs *repository.ConversationRepository, products *repository.ProductRepository, logger *slog.Logger) *ConversationService {
+	return &ConversationService{convs: convs, products: products, logger: logger}
 }
 
 // Create starts or reuses a chat thread for a product.
 func (s *ConversationService) Create(ctx context.Context, buyer *model.User, sellerID uint, req *dto.CreateConversationRequest) (*model.Conversation, error) {
+	product, err := s.products.FindByID(ctx, req.ProductID)
+	if err != nil {
+		return nil, util.WrapAppError(fmt.Errorf("conversation[buyer=%d] product lookup: %w", buyer.ID, err), 404, constants.CodeNotFound, constants.MsgNotFound)
+	}
+	if product.SellerID != buyer.ID && product.Status == constants.ProductStatusRemoved {
+		s.logger.Info(fmt.Sprintf(constants.LogReportProductBlocked, req.ProductID, buyer.ID, "conversation"))
+		return nil, util.NewAppError(409, constants.CodeConflict, constants.MsgProductRemoved, nil)
+	}
 	existing, err := s.convs.FindExisting(ctx, req.ProductID, buyer.ID, sellerID)
 	if err == nil && existing != nil {
 		return existing, nil
@@ -54,6 +63,14 @@ func (s *ConversationService) SendMessage(ctx context.Context, senderID uint, co
 	}
 	if conv.BuyerID != senderID && conv.SellerID != senderID {
 		return nil, util.NewAppError(403, constants.CodeForbidden, constants.MsgForbidden, nil)
+	}
+	product, err := s.products.FindByID(ctx, conv.ProductID)
+	if err != nil {
+		return nil, util.WrapAppError(fmt.Errorf("conversation[id=%d] send product lookup: %w", convID, err), 404, constants.CodeNotFound, constants.MsgNotFound)
+	}
+	if product.Status == constants.ProductStatusRemoved {
+		s.logger.Info(fmt.Sprintf(constants.LogReportProductBlocked, conv.ProductID, senderID, "message"))
+		return nil, util.NewAppError(409, constants.CodeConflict, constants.MsgProductRemoved, nil)
 	}
 	msg := &model.Message{ConversationID: convID, SenderID: senderID, Content: content, Read: false}
 	if err := s.convs.CreateMessage(ctx, msg); err != nil {
