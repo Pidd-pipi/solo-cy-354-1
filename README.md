@@ -56,7 +56,9 @@ TEST_MYSQL_DSN='user:pass@tcp(host:port)/?charset=utf8mb4&parseTime=True' \
   go test -count=2 ./test/regressionmysql/
 ```
 
-覆盖：旧 VARCHAR(128) 列对 200 字备注真实报 `Error 1406 Data too long`；启动迁移把旧列扩到 512（幂等）；迁移后 200 字备注下架/驳回端到端完整保存返回、201 字返回 400 且状态不变；处理中途注入失败时 InnoDB 整体回滚（举报仍待处理、商品仍在售），故障解除后同一举报可重试成功。
+覆盖：旧 VARCHAR(128) 列对 200 字备注真实报 `Error 1406 Data too long`；**启动时扩列失败为致命错误**——服务不监听端口、错误包装 `ErrReportNoteColumnWidth` 且直接点名 `reports.handle_result`（用 GORM 回调精确注入扩列失败验证）；无 ALTER 权限账号启动时真实 1142 拒绝并中止（需支持账号管理的 MySQL，否则该用例自动 SKIP）；故障解除后同一库重启成功、长备注处理可用；启动迁移把旧列扩到 512（幂等）；迁移后 200 字备注下架/驳回端到端完整保存返回、201 字返回 400 且状态不变；处理中途注入失败时 InnoDB 整体回滚（举报仍待处理、商品仍在售），故障解除后同一举报可重试成功。
+
+> 启动迁移入口为 `internal/app.Start`（连接 → `database.Migrate` → 播种 → 监听），`reports.handle_result` 扩列失败会返回错误，`cmd/server/main.go` 以非零状态退出，服务不会进入可用状态。
 
 前端（Vue 3 + Vite）：
 

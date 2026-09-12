@@ -3,8 +3,6 @@ package regressionmysql
 import (
 	"encoding/json"
 	"errors"
-	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
@@ -14,11 +12,6 @@ import (
 	"github.com/lp/campus-market/internal/testsupport"
 	"gorm.io/gorm"
 )
-
-// discardLogger swallows migration warnings in tests.
-func discardLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
-}
 
 // TestOldColumnWidthIsReallyEnforced first proves the test harness can detect
 // the old VARCHAR(128) defect: a 200-character admin note (the maximum allowed
@@ -80,7 +73,7 @@ func TestStartupMigrationWidensOldSchema(t *testing.T) {
 	}
 
 	// Run the same migration entry point used by cmd/server main.
-	if err := database.Migrate(db, discardLogger()); err != nil {
+	if err := database.Migrate(db); err != nil {
 		t.Fatalf("startup migration: %v", err)
 	}
 	if got := columnType(t, db, "reports", "handle_result"); got != "varchar(512)" {
@@ -119,7 +112,7 @@ func TestLongNoteEndToEndOnRealMySQL(t *testing.T) {
 	db := freshDB(t)
 	testsupport.MigrateAndSeed(t, db)
 	// Production startup path (fresh schema is already 512-wide, but exercise it).
-	if err := database.Migrate(db, discardLogger()); err != nil {
+	if err := database.Migrate(db); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	app := testsupport.New(t, db)
@@ -209,7 +202,7 @@ func TestLongNoteEndToEndOnRealMySQL(t *testing.T) {
 func TestTransactionRollbackAndRetryOnRealInnoDB(t *testing.T) {
 	db := freshDB(t)
 	testsupport.MigrateAndSeed(t, db)
-	if err := database.Migrate(db, discardLogger()); err != nil {
+	if err := database.Migrate(db); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	app := testsupport.New(t, db)

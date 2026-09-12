@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -30,6 +31,30 @@ import (
 )
 
 var dbSeq uint64
+
+// mysqlHostPort returns the host:port described by TEST_MYSQL_DSN.
+func mysqlHostPort() string {
+	cfg, err := mysqldriver.ParseDSN(rootDSN())
+	if err != nil {
+		return "127.0.0.1:3306"
+	}
+	host, port, err := net.SplitHostPort(cfg.Addr)
+	if err != nil {
+		return net.JoinHostPort(cfg.Addr, "3306")
+	}
+	return net.JoinHostPort(host, port)
+}
+
+// scratchDSN builds a root DSN pointing at the named scratch database.
+func scratchDSN(t *testing.T, dbName string) string {
+	t.Helper()
+	cfg, err := mysqldriver.ParseDSN(rootDSN())
+	if err != nil {
+		t.Fatalf("parse root dsn: %v", err)
+	}
+	cfg.DBName = dbName
+	return cfg.FormatDSN()
+}
 
 func rootDSN() string {
 	if v := os.Getenv("TEST_MYSQL_DSN"); v != "" {
@@ -161,4 +186,14 @@ func itoa(n uint) string {
 		n /= 10
 	}
 	return string(buf[i:])
+}
+
+// currentDatabase returns the current schema of the connection.
+func currentDatabase(t *testing.T, db *gorm.DB) string {
+	t.Helper()
+	var name string
+	if err := db.Raw("SELECT DATABASE()").Scan(&name).Error; err != nil {
+		t.Fatalf("current database: %v", err)
+	}
+	return name
 }
