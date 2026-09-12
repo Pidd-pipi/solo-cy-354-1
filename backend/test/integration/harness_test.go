@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,11 +13,8 @@ import (
 	"github.com/dolthub/go-mysql-server/memory"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/lp/campus-market/internal/config"
-	"github.com/lp/campus-market/internal/model"
-	"github.com/lp/campus-market/internal/router"
-	"golang.org/x/crypto/bcrypt"
-	"gorm.io/driver/mysql"
+	"github.com/lp/campus-market/internal/testsupport"
+	gmysql "gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
@@ -38,10 +34,9 @@ func startInMemoryMySQL(t *testing.T) string {
 	go func() { _ = srv.Start() }()
 	addr := srv.Listener.Addr().String()
 	t.Cleanup(func() { _ = srv.Close() })
-	// Wait until the server accepts connections.
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if db, err := gorm.Open(mysql.Open(dsn(addr, "root", "")), &gorm.Config{}); err == nil {
+		if db, err := gorm.Open(gmysql.Open(dsn(addr)), &gorm.Config{}); err == nil {
 			if sqlDB, e := db.DB(); e == nil {
 				_ = sqlDB.Ping()
 				sqlDB.Close()
@@ -54,105 +49,49 @@ func startInMemoryMySQL(t *testing.T) string {
 	return addr
 }
 
-func dsn(addr, user, pass string) string {
-	return fmt.Sprintf("%s:%s@tcp(%s)/lpcampusmarket_db?charset=utf8mb4&parseTime=True&loc=Local", user, pass, addr)
+func dsn(addr string) string {
+	return fmt.Sprintf("root:@tcp(%s)/lpcampusmarket_db?charset=utf8mb4&parseTime=True&loc=Local", addr)
 }
 
-// harness wires the real Gin router against the in-memory MySQL and seeds
-// three accounts: two students and one admin.
+// harness wires the real Gin router against a database for in-memory
+// integration tests. It reuses the shared testsupport application assembly.
 type harness struct {
 	t       *testing.T
+	app     *testsupport.App
 	router  http.Handler
 	db      *gorm.DB
-	tokenA  string // student 13700000001
-	tokenB  string // student 13700000002
-	adminTo string // admin 13800000001
+	tokenA  string
+	tokenB  string
+	adminTo string
 }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	addr := startInMemoryMySQL(t)
-	db, err := gorm.Open(mysql.Open(dsn(addr, "root", "")), &gorm.Config{})
+	db, err := gorm.Open(gmysql.Open(dsn(startInMemoryMySQL(t))), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("gorm open: %v", err)
 	}
 	return newHarnessWithDB(t, db)
 }
 
-// newHarnessWithDB wires the real router against any GORM database. It is used
-// with the in-memory MySQL engine for most flows and with an in-memory SQLite
-// database (real ROLLBACK semantics) for the transaction-rollback test.
 func newHarnessWithDB(t *testing.T, db *gorm.DB) *harness {
 	t.Helper()
-	if err := db.AutoMigrate(
-		&model.User{}, &model.Product{}, &model.Conversation{}, &model.Message{},
-		&model.TradeOrder{}, &model.Review{}, &model.BookExchange{}, &model.Report{},
-	); err != nil {
-		t.Fatalf("automigrate: %v", err)
+	testsupport.MigrateAndSeed(t, db)
+	app := testsupport.New(t, db)
+	return &harness{
+		t: t, app: app, router: app.Handler, db: db,
+		tokenA: app.TokenA, tokenB: app.TokenB, adminTo: app.TokenC,
 	}
-	mustHash := func(p string) string {
-		h, _ := bcrypt.GenerateFromPassword([]byte(p), bcrypt.MinCost)
-		return string(h)
-	}
-	users := []model.User{
-		{Phone: "13700000001", PasswordHash: mustHash("123456"), Nickname: "学生甲", Role: "student", Campus: "东校区", CreditScore: 100},
-		{Phone: "13700000002", PasswordHash: mustHash("123456"), Nickname: "学生乙", Role: "student", Campus: "西校区", CreditScore: 100},
-		{Phone: "13800000001", PasswordHash: mustHash("admin123"), Nickname: "管理员", Role: "admin", Campus: "东校区", CreditScore: 300},
-	}
-	if err := db.Create(&users).Error; err != nil {
-		t.Fatalf("seed users: %v", err)
-	}
-	product := model.Product{
-		SellerID: users[0].ID, Title: "测试教材", Description: "九成新", Price: 12.5,
-		Category: "books", Condition: "九成新", Campus: "东校区",
-		TradeLocation: "图书馆", Status: "on_sale",
-	}
-	if err := db.Create(&product).Error; err != nil {
-		t.Fatalf("seed product: %v", err)
-	}
-	cfg := &config.Config{
-		JWTSecret: "test-secret", JWTExpireHours: 24,
-		RateLimitPerMin: 10000, LoginRateLimit: 10000,
-		CORSOrigins: []string{"*"}, SeedingEnabled: false,
-	}
-	r := router.New(cfg, db, slog.Default())
-	h := &harness{t: t, router: r, db: db}
-	h.tokenA = h.login("13700000001", "123456")
-	h.tokenB = h.login("13700000002", "123456")
-	h.adminTo = h.login("13800000001", "admin123")
-	return h
 }
 
-type envelope struct {
-	Code    int             `json:"code"`
-	Message string          `json:"message"`
-	Data    json.RawMessage `json:"data"`
-}
+type envelope = testsupport.Envelope
 
 func (h *harness) login(phone, password string) string {
-	body, _ := json.Marshal(map[string]string{"phone": phone, "password": password})
-	rec := h.do(http.MethodPost, "/api/v1/users/login", "", body)
-	var env envelope
-	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil || env.Code != 0 {
-		h.t.Fatalf("login %s failed: status=%d body=%s", phone, rec.Code, rec.Body.String())
-	}
-	var data struct {
-		Token string `json:"token"`
-	}
-	_ = json.Unmarshal(env.Data, &data)
-	if data.Token == "" {
-		h.t.Fatalf("login %s returned empty token: %s", phone, rec.Body.String())
-	}
-	return data.Token
+	return h.app.Login(phone, password)
 }
 
 func (h *harness) do(method, path, token string, body []byte) *httptest.ResponseRecorder {
-	var reader *bytes.Reader
-	if body != nil {
-		reader = bytes.NewReader(body)
-	} else {
-		reader = bytes.NewReader(nil)
-	}
+	reader := bytes.NewReader(body)
 	req := httptest.NewRequest(method, path, reader)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")

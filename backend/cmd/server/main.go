@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/lp/campus-market/internal/config"
-	"github.com/lp/campus-market/internal/model"
+	"github.com/lp/campus-market/internal/database"
 	"github.com/lp/campus-market/internal/router"
 	"github.com/lp/campus-market/internal/util"
 	"gorm.io/driver/mysql"
@@ -38,19 +38,9 @@ func main() {
 	}
 	defer sqlDB.Close()
 
-	if err := db.AutoMigrate(
-		&model.User{}, &model.Product{}, &model.Conversation{}, &model.Message{},
-		&model.TradeOrder{}, &model.Review{}, &model.BookExchange{}, &model.Report{},
-	); err != nil {
+	if err := database.Migrate(db, logger); err != nil {
 		logger.Error("auto migrate failed", slog.String("error", err.Error()))
 		os.Exit(1)
-	}
-
-	// AutoMigrate does not widen existing columns. Deployments created while
-	// handle_result was VARCHAR(128) must be widened so long (up-to-200-char)
-	// administrator notes are not rejected by the database. Idempotent on MySQL.
-	if err := db.Exec("ALTER TABLE reports MODIFY COLUMN handle_result VARCHAR(512) NOT NULL DEFAULT ''").Error; err != nil {
-		logger.Warn("widen reports.handle_result skipped", slog.String("error", err.Error()))
 	}
 
 	if cfg.SeedingEnabled {

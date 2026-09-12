@@ -42,6 +42,22 @@ go build ./...
 go test ./...
 ```
 
+### 真实 MySQL 回归测试（举报备注边界 / 旧库升级 / 事务回滚）
+
+列宽强制（VARCHAR 超长报错）与事务回滚只能用**真实 InnoDB** 验证（内存测试引擎不限制列宽、不回滚）。`test/regressionmysql` 套件连接真实 MySQL/MariaDB，每个用例自动创建并清理独立临时库，可重复运行；无可用服务器时自动 skip。
+
+```bash
+# 方式一：用 docker compose 已启动的 MySQL（端口 3306）
+TEST_MYSQL_DSN='root:lpcampusmarket_root@tcp(127.0.0.1:3306)/?charset=utf8mb4&parseTime=True' \
+  go test ./test/regressionmysql/ -v
+
+# 方式二：任意 MySQL 8.0 / MariaDB 10.5+（DSN 不指定库名，套件自建临时库）
+TEST_MYSQL_DSN='user:pass@tcp(host:port)/?charset=utf8mb4&parseTime=True' \
+  go test -count=2 ./test/regressionmysql/
+```
+
+覆盖：旧 VARCHAR(128) 列对 200 字备注真实报 `Error 1406 Data too long`；启动迁移把旧列扩到 512（幂等）；迁移后 200 字备注下架/驳回端到端完整保存返回、201 字返回 400 且状态不变；处理中途注入失败时 InnoDB 整体回滚（举报仍待处理、商品仍在售），故障解除后同一举报可重试成功。
+
 前端（Vue 3 + Vite）：
 
 ```bash
