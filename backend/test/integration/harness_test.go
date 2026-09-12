@@ -13,6 +13,7 @@ import (
 	"github.com/dolthub/go-mysql-server/memory"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/information_schema"
 	"github.com/lp/campus-market/internal/testsupport"
 	gmysql "gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -22,7 +23,12 @@ import (
 // returns its address (host:port). No Docker/MySQL binary is required.
 func startInMemoryMySQL(t *testing.T) string {
 	t.Helper()
-	provider := sql.NewDatabaseProvider(memory.NewDatabase("lpcampusmarket_db"))
+	// information_schema is required so the GORM migrator can detect existing
+	// tables, making repeated AutoMigrate (as run by app.Start) idempotent.
+	provider := sql.NewDatabaseProvider(
+		memory.NewDatabase("lpcampusmarket_db"),
+		information_schema.NewInformationSchemaDatabase(),
+	)
 	engine := sqle.NewDefault(provider)
 	srv, err := server.NewDefaultServer(server.Config{
 		Protocol: "tcp",
